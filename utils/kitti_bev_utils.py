@@ -160,7 +160,7 @@ def inverse_yolo_target(targets, bc):
         w -= 0.3
         l -= 0.3
 
-        labels[n, :] = c, x, y, z, h, w, l, - np.arctan2(im, re) - 2*np.pi
+        labels[n, :] = c, x, y, z, h, w, l, np.pi - (- np.arctan2(im, re) - 2*np.pi)
         n += 1
 
     return labels

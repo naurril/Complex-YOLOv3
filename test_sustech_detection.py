@@ -7,12 +7,12 @@ import utils.utils as utils
 from models import *
 
 import torch.utils.data as torch_data
-from utils.kitti_yolo_dataset import KittiYOLO2WayDataset
+from utils.sustech_yolo_dataset import SUSTechYOLO2WayDataset
 import utils.kitti_bev_utils as bev_utils
 import utils.kitti_utils as kitti_utils
 import utils.mayavi_viewer as mview
 import utils.config as cnf
-from test_detection import predictions_to_kitti_format
+from test_detection import *
 
 def detect_and_draw(model, bev_maps, Tensor, is_front=True):
 
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     parser.add_argument("--img_size", type=int, default=cnf.BEV_WIDTH, help="size of each image dimension")
     parser.add_argument("--save_video", type=bool, default=False, help="Set this flag to True if you want to record video")
     parser.add_argument("--split", type=str, default="test", help="text file having image lists in dataset")
-    parser.add_argument("--folder", type=str, default="training", help="directory name that you downloaded all dataset")
+    parser.add_argument("--folder", type=str, default="example", help="directory name that you downloaded all dataset")
     opt = parser.parse_args()
     print(opt)
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     # Eval mode
     model.eval()
 
-    dataset = KittiYOLO2WayDataset(cnf.root_dir, split=opt.split, folder=opt.folder)
+    dataset = SUSTechYOLO2WayDataset(cnf.root_dir, split=opt.split, folder=opt.folder)
     data_loader = torch_data.DataLoader(dataset, 1, shuffle=False)
 
     Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
@@ -86,32 +86,42 @@ if __name__ == "__main__":
 
     start_time = time.time()
     for index, (img_paths, front_bevs, back_bevs) in enumerate(data_loader):
+        print(img_paths)
+        front_bev_result, img_detections_front = detect_and_draw(model, front_bevs, Tensor, True)
+        back_bev_result, img_detections_back = detect_and_draw(model, back_bevs, Tensor, False)
 
-        front_bev_result, img_detections = detect_and_draw(model, front_bevs, Tensor, True)
-        back_bev_result, _ = detect_and_draw(model, back_bevs, Tensor, False)
+        #print(img_detections_front)
+        #print(img_detections_back)
+
+        pred_pc_front = predictions_to_pointcloud_coordinates(img_detections_front, opt.img_size)
+        pred_pc_back = predictions_to_pointcloud_coordinates(img_detections_back, opt.img_size)
+
+        print(predictions_to_sustech_format(pred_pc_front))
+        #print(pred_pc_back)
+
 
         end_time = time.time()
         print(f"FPS: {1.0/(end_time-start_time):.2f}")
         start_time = end_time
 
-        front_bev_result = cv2.rotate(front_bev_result, cv2.ROTATE_90_CLOCKWISE)
-        back_bev_result = cv2.rotate(back_bev_result, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        vis = np.concatenate((front_bev_result, back_bev_result), axis=1)
+        # front_bev_result = cv2.rotate(front_bev_result, cv2.ROTATE_90_CLOCKWISE)
+        # back_bev_result = cv2.rotate(back_bev_result, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        # vis = np.concatenate((front_bev_result, back_bev_result), axis=1)
+        
+        # img2d = cv2.imread(img_paths[0])
+        # calib = dataset.get_calib()
+        # objects_pred = predictions_to_kitti_format(img_detections, calib, img2d.shape, opt.img_size)  
+        # img2d = mview.show_image_with_boxes(img2d, objects_pred, calib, False)
 
-        img2d = cv2.imread(img_paths[0])
-        calib = kitti_utils.Calibration(img_paths[0].replace(".png", ".txt").replace("image_2", "calib"))
-        objects_pred = predictions_to_kitti_format(img_detections, calib, img2d.shape, opt.img_size)  
-        img2d = mview.show_image_with_boxes(img2d, objects_pred, calib, False)
+        # img2d = cv2.resize(img2d, (opt.img_size*2, 375))
+        # vis = np.concatenate((img2d, vis), axis=0)
 
-        img2d = cv2.resize(img2d, (opt.img_size*2, 375))
-        vis = np.concatenate((img2d, vis), axis=0)
+        # cv2.imshow('BEV_DETECTION_RESULT', vis)
+        # if opt.save_video:
+        #     out.write(vis)
 
-        cv2.imshow('BEV_DETECTION_RESULT', vis)
-        if opt.save_video:
-            out.write(vis)
-
-        if cv2.waitKey(0) & 0xFF == 27:
-            break
+        # if cv2.waitKey(0) & 0xFF == 27:
+        #     break
 
     if opt.save_video:
         out.release()

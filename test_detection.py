@@ -17,6 +17,60 @@ from utils.kitti_yolo_dataset import KittiYOLODataset
 import utils.config as cnf
 import utils.mayavi_viewer as mview
 
+
+
+def pred_to_sustech_format(pred):
+    
+    obj_type = "Car"
+    if pred[0] == 0:
+        obj_type="Car"
+    elif pred[0] == 1:
+        obj_type="Pedestrian"
+    elif pred[0] == 2: 
+        obj_type="Cyclist"
+
+    return {
+        "obj_type": obj_type,
+        "obj_id": "",
+        "psr": {
+            "position": {
+                "x": pred[1],
+                "y": pred[2],
+                "z": pred[3]
+            },
+            "scale": {
+                "z": pred[4],
+                "x": pred[5],
+                "y": pred[6]
+            },
+            "rotation":{
+                "x": 0, 
+                "y": 0,
+                "z": np.pi/2 - pred[7]
+            }
+        }
+
+    }
+
+def predictions_to_sustech_format(predictions):
+    return [x for x in map(lambda p: pred_to_sustech_format(p), predictions)]
+
+def predictions_to_pointcloud_coordinates(img_detections, img_size):
+    predictions = np.zeros([50, 7], dtype=np.float32)
+    count = 0
+    for detections in img_detections:
+        if detections is None:
+            continue
+        # Rescale boxes to original image
+        for x, y, w, l, im, re, conf, cls_conf, cls_pred in detections:
+            yaw = np.arctan2(im, re)
+            predictions[count, :] = cls_pred, x/img_size, y/img_size, w/img_size, l/img_size, im, re
+            count += 1
+
+    predictions = bev_utils.inverse_yolo_target(predictions, cnf.boundary)
+
+    return predictions
+
 def predictions_to_kitti_format(img_detections, calib, img_shape_2d, img_size, RGB_Map=None):
     predictions = np.zeros([50, 7], dtype=np.float32)
     count = 0
@@ -30,6 +84,8 @@ def predictions_to_kitti_format(img_detections, calib, img_shape_2d, img_size, R
             count += 1
 
     predictions = bev_utils.inverse_yolo_target(predictions, cnf.boundary)
+
+
     if predictions.shape[0]:
         predictions[:, 1:] = aug_utils.lidar_to_camera_box(predictions[:, 1:], calib.V2C, calib.R0, calib.P)
 
